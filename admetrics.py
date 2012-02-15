@@ -2,14 +2,18 @@
 
 # The spec didn't mention UTF-8, but the sample input and output files had a UTF-8
 # BOM, so I have to assume that UTF-8 is required... I've done what I can
-# in this respect, but more work may be require to fully support Unicode.
+# in this respect, but more work may be required to fully support Unicode.
+
+# Interestingly, Google's Ad Words report does not have a BOM, but perhaps
+# the sample data files were given one just for purposes of the test? Or perhaps
+# another ad vendor uses Unicode BOMs?
 
 # Some thoughts on correctness:
 #
 # * I'm pretty blithly slinging around Unicode strings, and I'm sure
 #   that somewhere I'm doing it wrong or incorrectly mixing Unicode
 #   data and non-Unicode data. That might bite me if the input were
-#   non-ascii-range characters.
+#   non-ascii-range characters. Testing needed.
 # * I tried comparing the sample input to my own AdWords reports and
 #   attempted to make this happier with data that looked like the real
 #   world, but that could probably use work.
@@ -60,7 +64,12 @@ def money_string_to_float(s):
     if len(s) == 0:
         raise ValueError("Empty string a money value")
     currency = s[0]
-    if currency != "$":
+    if currency.isdigit():
+        # AdWords seems to assume the currency of the account, and not
+        # output it. Ick. We'll default to USD.
+        currency = '$'
+        s = '$' + s
+    elif currency != "$":
         raise ValueError("TBD: No currency conversions available, yet")
     if len(s) == 1:
         raise ValueError("$ must be followed by numeric amount")
@@ -118,13 +127,20 @@ class AdInfo(object):
         self.ad_name = self.data['ad name']
         self.impressions = string_to_integer(self.data['impressions'])
         self.clicks = string_to_integer(self.data['clicks'])
-        ctr = string_to_float(self.data['ctr'])
+        ctr = self.data['ctr']
+        # Google's AdWords report uses percent, not a raw ratio
+        if ctr.endswith('%'):
+            ctr = ctr[0:len(ctr)-1]
+            ctr = string_to_float(ctr)/100.0
+        else:
+            ctr = string_to_float(self.data['ctr'])
         if self.impressions == 0:
             if ctr != 0:
                 raise CSVError("Non-zero CTR for zero impressions")
         else:
             # Jitter lets us compensate for floating point error by allowing a small
-            # variation between 0.333 and 1/3 
+            # variation between 0.333 and 1/3. This is configurable via the ctr_tolerance
+            # parameter
             jitter = 10 ** -(ctr_tolerance-1)
             calc_ctr = float(self.clicks)/self.impressions
             delta = abs(round(ctr, ctr_tolerance)-round(calc_ctr, ctr_tolerance))
