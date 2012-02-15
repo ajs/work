@@ -506,6 +506,7 @@ def default_producer(ad_info, first=False):
     if key in UNIQUE_RECORDS_SEEN:
         logging.error("Duplicate record for key: %s" % key)
         exit(1)
+    UNIQUE_RECORDS_SEEN[key] = 1
 
     row = u"%s,%s,%s,%d,%d,%d" % (
         ad_info.date,
