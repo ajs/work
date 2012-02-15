@@ -58,6 +58,9 @@ import sys
 import codecs
 import logging
 
+# Uncomment to suppress warnings
+# logging.basicConfig(level=logging.ERROR)
+
 #Utility functions:
 
 CURRENCY_VALUE_RE = re.compile("-?\d+(\.\d\d)$")
@@ -150,15 +153,23 @@ class AdInfo(object):
         self.ad_name = self.data['ad name']
         self.impressions = string_to_integer(self.data['impressions'])
         self.clicks = string_to_integer(self.data['clicks'])
-        ctr = self.data['ctr']
+        self.ctr = self.data['ctr']
         # Google's AdWords report uses percent, not a raw ratio
-        if ctr.endswith('%'):
-            ctr = ctr[0:len(ctr)-1]
-            ctr = string_to_float(ctr)/100.0
+        if self.ctr.endswith('%'):
+            self.ctr = self.ctr[0:len(self.ctr)-1]
+            self.ctr = string_to_float(self.ctr)/100.0
         else:
-            ctr = string_to_float(self.data['ctr'])
+            self.ctr = string_to_float(self.data['ctr'])
+        self.total_cost = money_string_to_float(self.data['total cost'])
+
+    def _sanity_check(self, ctr_tolerance):
+        """
+        Perform some sanity checks on the data, producing warnings or
+        raising exceptions as required.
+        """
+
         if self.impressions == 0:
-            if ctr != 0:
+            if self.ctr != 0:
                 raise CSVError("Non-zero CTR for zero impressions")
         else:
             # Jitter lets us compensate for floating point error by allowing a small
@@ -166,14 +177,23 @@ class AdInfo(object):
             # parameter
             jitter = 10 ** -(ctr_tolerance-1)
             calc_ctr = float(self.clicks)/self.impressions
-            delta = abs(round(ctr, ctr_tolerance)-round(calc_ctr, ctr_tolerance))
+            delta = abs(round(self.ctr, ctr_tolerance)-round(calc_ctr, ctr_tolerance))
             if delta > jitter:
                 self.warner(
                     "Given CTR (%f) does not match clicks/impressions (%f) to within %f" %
-                        (ctr, calc_ctr, jitter))
-        self.total_cost = money_string_to_float(self.data['total cost'])
+                        (self.ctr, calc_ctr, jitter))
         if self.total_cost == 0.0 and self.impressions > 0:
-            self.warner("Sanity check failed: cost is zero for zero impressions")
+            raise CSVError("Sanity check failed: cost is non-zero for zero impressions")
+        if self.total_cost < 0.0:
+            raise CSVError("Sanity check failed: negative cost")
+        if self.impressions < 0:
+            raise CSVError("Sanity check failed: negative impressions")
+        if self.clicks < 0:
+            raise CSVError("Sanity check failed: negative clicks")
+        if self.ad_name == "":
+            raise CSVError("Sanity check failed: empty ad name")
+        if self.ad_group == "":
+            raise CSVError("Sanity check failed: empty ad group")
 
 class CSVError(Exception):
     """A simple exception class for use in our CSV handling"""
@@ -221,6 +241,7 @@ class CSVReader(object):
         * "quoted strings","as fields",mixed,with,non-quoted
         * "double ""quote"" escapes"
         * Elimination of blank input lines
+        * Leading and trailing whitespace stripping on fields
         """
 
         while True:
@@ -238,7 +259,7 @@ class CSVReader(object):
                     if c == '"':
                         state = "quote"
                     elif c == ',':
-                        values.append(accum)
+                        values.append(accum.strip())
                         accum = ""
                     else:
                         accum += c
@@ -253,21 +274,21 @@ class CSVReader(object):
                         state = "quote"
                         accum += c
                     elif c == ',':
-                        values.append(accum)
+                        values.append(accum.strip())
                         accum = ""
                         state = None
                     else:
                         raise CSVError("Unexpected character '%s' after end-quote" % c)
                 elif state == "data":
                     if c == ',':
-                        values.append(accum)
+                        values.append(accum.strip())
                         accum = ""
                         state = None
                     else:
                         accum += c
                 else:
                     raise CSVError("Unknown state '%s'" % state)
-            values.append(accum)
+            values.append(accum.strip())
 
             return values
 
@@ -315,6 +336,8 @@ class AdDataReader(CSVReader):
         self.produce = produce
         self.date = None
         self.colnames = None
+        self.accumulator = { 'clicks':0, 'impressions':0, 'total cost':0 }
+
         super(AdDataReader, self).__init__(source)
 
     def process_input(self):
@@ -342,8 +365,21 @@ class AdDataReader(CSVReader):
             # The original sample input file used "Total" as an ad group to denote
             # the summary line. Google's Ad Sense reports use "--", so I handle both.
             if row_data.ad_group.lower() == 'total' or row_data.ad_group == "--":
-                self._warning("Ignoring input with ad group, '%s'" % row_data.ad_group)
+                self._warning("Not saving input with ad group, '%s'" % row_data.ad_group)
+                if row_data.impressions != self.accumulator['impressions']:
+                    self._failure("Total impressions in summary (%d) != our tally (%d)" % (
+                        row_data.impressions, self.accumulator['impressions']))
+                if row_data.clicks != self.accumulator['clicks']:
+                    self._failure("Total clicks in summary (%d) != our tally (%d)" % (
+                        row_data.clicks, self.accumulator['clicks']))
+                if abs(row_data.clicks - self.accumulator['clicks']) >= 0.01:
+                    self._failure("Total cost in summary (%.2f) != our tally (%.2f)" % (
+                        row_data.total_cost, self.accumulator['total cost']))
                 continue
+            else:
+                self.accumulator['impressions'] += row_data.impressions
+                self.accumulator['clicks'] += row_data.clicks
+                self.accumulator['total cost'] += row_data.total_cost
             if first:
                 self.produce(row_data, True)
                 first = False
@@ -410,7 +446,7 @@ class AdDataReader(CSVReader):
             name = self.EXPECTED_FIELDS[name]
         return name
 
-    def _failure(self, message, exception):
+    def _failure(self, message, exception=None):
         """Produce an error message"""
 
         if exception is not None:
@@ -427,6 +463,9 @@ class AdDataReader(CSVReader):
 
 ##########################################################
 ### What follows is a sample program that uses this module
+
+# Tracker for our primary key
+UNIQUE_RECORDS_SEEN = {}
 
 def csv_string(in_string):
     """Format a string for CSV output"""
@@ -457,6 +496,17 @@ def default_producer(ad_info, first=False):
     # Note that there is a great deal wrong with this, but a full treatment of correct
     # fractional currency handling is outside of the scope of this project right now.
     total_cost = int(round(ad_info.total_cost * 100))
+    key = u"%s,%s,%s" % (
+        ad_info.date,
+        csv_string(ad_info.ad_group.lower()),
+        csv_string(ad_info.ad_name.lower()),
+    )
+
+    global UNIQUE_RECORDS_SEEN
+    if key in UNIQUE_RECORDS_SEEN:
+        logging.error("Duplicate record for key: %s" % key)
+        exit(1)
+
     row = u"%s,%s,%s,%d,%d,%d" % (
         ad_info.date,
         csv_string(ad_info.ad_group.lower()),
