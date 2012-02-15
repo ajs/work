@@ -123,9 +123,15 @@ class AdInfo(object):
             if ctr != 0:
                 raise CSVError("Non-zero CTR for zero impressions")
         else:
-            jitter = 10 ** -ctr_tolerance
-            if abs(round(ctr, ctr_tolerance)-round(self.clicks/self.impressions)) <= jitter:
-                raise CSVError("Given CTR does not match clicks/impressions")
+            # Jitter lets us compensate for floating point error by allowing a small
+            # variation between 0.333 and 1/3 
+            jitter = 10 ** -(ctr_tolerance-1)
+            calc_ctr = float(self.clicks)/self.impressions
+            delta = abs(round(ctr, ctr_tolerance)-round(calc_ctr, ctr_tolerance))
+            if delta > jitter:
+                raise CSVError(
+                    "Given CTR (%f) does not match clicks/impressions (%f) to within %f" %
+                        (ctr, calc_ctr, jitter))
         self.total_cost = money_string_to_float(self.data['total cost'])
         if self.total_cost == 0.0 and self.impressions > 0:
             self.warner("Sanity check failed: cost is zero for zero impressions")
@@ -272,6 +278,9 @@ class AdDataReader(CSVReader):
                 return
             line.append(self.date)
             try:
+                # The tolerance value should be passed here, and recieved
+                # from the caller that instantiated this class. Ideally, this
+                # should be a command-line parameter, since it may vary by file
                 row_data = AdInfo(self._warning, self.colnames, line)
             except CSVError as e:
                 self._failure("While processing individual fields", e.value)
