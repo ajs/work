@@ -1,5 +1,28 @@
 #!/usr/bin/python
 
+# This is a module for reading and processing CSV files that describe ad
+# unit performance. At the end, there is a sample output producer, but
+# it's a relatively trivial thing and could be re-implemented for any
+# number of purposes.
+
+# The primary interface to this module is the AdDataReader class, which
+# takes two parameters to instantiate: an input source and a producer
+# function that will be called-back with the resulting AdInfo objects as
+# the input is read.
+
+# The second interface is the AdInfo object. It is instantiated with a
+# warning callback, a field-ordering sequence, a data sequence and an
+# optional CTR tolerance for comparing the input CTR to the calculated CTR.
+
+# Warnings and errors are produced on standard output. Ad directed, this
+# library errs on the side of producing copious diagnostic info (with line
+# and context info) and exiting.
+
+# A useful improvement for the future would be to behave more like a library in
+# terms of throwing errors all the way up into the consumer, and let the
+# consumer use callbacks to get any context information required. The way
+# this is designed, that should be relatively easy to change.
+
 # The spec didn't mention UTF-8, but the sample input and output files had a UTF-8
 # BOM, so I have to assume that UTF-8 is required... I've done what I can
 # in this respect, but more work may be required to fully support Unicode.
@@ -145,7 +168,7 @@ class AdInfo(object):
             calc_ctr = float(self.clicks)/self.impressions
             delta = abs(round(ctr, ctr_tolerance)-round(calc_ctr, ctr_tolerance))
             if delta > jitter:
-                raise CSVError(
+                self.warner(
                     "Given CTR (%f) does not match clicks/impressions (%f) to within %f" %
                         (ctr, calc_ctr, jitter))
         self.total_cost = money_string_to_float(self.data['total cost'])
@@ -153,6 +176,8 @@ class AdInfo(object):
             self.warner("Sanity check failed: cost is zero for zero impressions")
 
 class CSVError(Exception):
+    """A simple exception class for use in our CSV handling"""
+
     def __init__(self, value):
         self.value = value
 
@@ -172,12 +197,22 @@ class CSVReader(object):
         self.lastline = None
 
     def readline(self):
+        """
+        Read a line of input and return it. Also track line number and last
+        line read for diagnostic use.
+        """
+
         self.lastline = self.source.readline()
         if len(self.lastline) != 0:
             self.lineno += 1
         return self.lastline
 
     def get_reader_state(self):
+        """
+        Get the diagnostic info for the current file and read state and format
+        it as a string for warnings and such.
+        """
+
         return "%s:%s: %s" % (self.source.name, self.lineno, str(self.lastline).strip())
 
     def parse_line(self):
@@ -272,6 +307,9 @@ class AdDataReader(CSVReader):
         The first time the callback is invoked, it will be passed True as a second
         argument to mark this as the first produced value. Subsequent calls will
         not be passed a second paramter.
+
+        The input source must be a file object or compatible stream that supports
+        .readline() and .name
         """
 
         self.produce = produce
@@ -352,6 +390,8 @@ class AdDataReader(CSVReader):
         exit(1)
 
     def _read_column_names_header(self):
+        """Read the header that keys our column names"""
+
         cols = self.parse_line()
         if cols is None:
             return None
@@ -363,12 +403,16 @@ class AdDataReader(CSVReader):
         return normalized_cols
 
     def _normalize_column_name(self, name):
+        """Column names should be downcased and mapped to our expected names"""
+
         name = name.lower()
         if name in self.EXPECTED_FIELDS:
             name = self.EXPECTED_FIELDS[name]
         return name
 
     def _failure(self, message, exception):
+        """Produce an error message"""
+
         if exception is not None:
             ex_msg = ":\n  " + exception
         else:
@@ -376,6 +420,8 @@ class AdDataReader(CSVReader):
         logging.error(message + ":\n" + self.get_reader_state() + ex_msg)
 
     def _warning(self, message):
+        """Produce a warning messsage"""
+
         logging.warning(self.get_reader_state() + "\n" + "Warning: " + message)
 
 
@@ -383,15 +429,25 @@ class AdDataReader(CSVReader):
 ### What follows is a sample program that uses this module
 
 def csv_string(in_string):
+    """Format a string for CSV output"""
+
     if '"' in in_string:
         return '"' + in_string.replace('"', '""') + '"'
     else:
         return in_string
 
 def output_utf8_string(s):
-    sys.stdout.write((s + "\n").encode('utf-8'))
+    """Print a Unicode string as UTF-8 output."""
+
+    sys.stdout.write((s + u"\n").encode('utf-8'))
 
 def default_producer(ad_info, first=False):
+    """
+    This will produce the output file as directed by the instructions. Note that
+    the instructions were (deliberately?) vague about the output format, so most
+    of what we know is from the sample data file.
+    """
+
     if first:
         sys.stdout.write(codecs.BOM_UTF8)
         output_utf8_string(u"report_date, ad_group, ad_name, impressions, " +
