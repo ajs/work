@@ -8,9 +8,8 @@ import logging
 from admetrics import AdInfo, AdDataReader, CSVError
 
 class TestAdInfo(unittest.TestCase):
-    """
-    Unit tests for the AdInfo class
-    """
+    """Unit tests for the AdInfo class"""
+
     REQUIRED_FIELDS = (
         'date', 'ad group', 'ad name', 'impressions', 'clicks', 'ctr', 'total cost')
 
@@ -87,6 +86,7 @@ class TestAdInfo(unittest.TestCase):
             info = self.make_ascii_adinfo(ad_group='')
 
 class TestAdDataReader(unittest.TestCase):
+    """Unit tests for the AdDataReader class"""
 
     def setUp(self):
         self.click_total = 0
@@ -97,8 +97,14 @@ class TestAdDataReader(unittest.TestCase):
         pass
 
     def click_totaler_producer(self, ad_info, first=False):
-        logging.debug("producer got clicks: " + str(ad_info.clicks))
+        """A producer that tallies the clicks fields"""
+
         self.click_total += ad_info.clicks
+
+    def date_check_producer(self, ad_info, first=False):
+        """A producer that saves off the data files date value"""
+
+        self.sample_date = ad_info.date
 
     def make_reader_from_sample(self, producer=None):
         """Return a reader for the sample input file"""
@@ -123,6 +129,14 @@ class TestAdDataReader(unittest.TestCase):
         reader = self.make_reader_from_sample(producer=self.click_totaler_producer)
         reader.process_input()
         self.assertEqual(self.click_total, 167)
+
+    def test_reader_verify_date(self):
+        """Check sample data file for expected date"""
+
+        self.sample_date = ""
+        reader = self.make_reader_from_sample(producer=self.date_check_producer)
+        reader.process_input()
+        self.assertEqual(self.sample_date, u'2011-01-01')
 
 if __name__ == '__main__':
     unittest.main()
