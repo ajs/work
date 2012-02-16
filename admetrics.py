@@ -49,6 +49,7 @@ import re
 import sys
 import codecs
 import logging
+import argparse
 
 # Uncomment to suppress warnings
 # logging.basicConfig(level=logging.ERROR)
@@ -312,19 +313,27 @@ class AdDataReader(CSVReader):
         "jul":"07", "aug":"08", "sep":"09", "oct":"10", "nov":"11", "dec":"12",
     }
 
-    def __init__(self, source, produce):
+    def __init__(self, source, produce, *args):
         """
         Initialize the reader with an input source and a callback that will be
         invoked with the resulting AdInfo object from a line read from the data file.
-        The first time the callback is invoked, it will be passed True as a second
-        argument to mark this as the first produced value. Subsequent calls will
-        not be passed a second paramter.
+
+        The produce callback will be passed a named parameter, "first", which
+        will be True the first time it is invoked for an output file and False
+        each subsequent call.
+
+        Additional, positional, parameters may optionally be receieved by the
+        constructor, in which case they will be stored as a single sequence
+        and passed on to the producer like so:
+
+            produce(adinfo, first=isfirsttime, args=args)
 
         The input source must be a file object or compatible stream that supports
         .readline() and .name
         """
 
         self.produce = produce
+        self.produce_args = args
         self.date = None
         self.colnames = None
         self.accumulator = { 'clicks':0, 'impressions':0, 'total cost':0 }
@@ -375,10 +384,10 @@ class AdDataReader(CSVReader):
                 self.accumulator['clicks'] += row_data.clicks
                 self.accumulator['total cost'] += row_data.total_cost
             if first:
-                self.produce(row_data, True)
+                self.produce(row_data, first=True, args=self.produce_args)
                 first = False
             else:
-                self.produce(row_data)
+                self.produce(row_data, first=False, args=self.produce_args)
 
     def _read_header(self):
         """Read the header data including the report date and column names"""
@@ -469,22 +478,47 @@ def csv_string(in_string):
     else:
         return in_string
 
-def output_utf8_string(s):
-    """Print a Unicode string as UTF-8 output."""
+def output_encoded_string(s, codec):
+    """Print a Unicode string as a given encoding on output."""
 
-    sys.stdout.write((s + u"\n").encode('utf-8'))
+    sys.stdout.write((s + u"\n").encode(codec))
 
-def default_producer(ad_info, first=False):
+def default_producer(ad_info, first, args):
     """
     This will produce the output file as directed by the instructions. Note that
     the instructions were (deliberately?) vague about the output format, so most
     of what we know is from the sample data file.
     """
 
+    if len(args) > 0:
+        args = args[0]
+        encoding = args.output_encoding
+        bom = not args.no_output_bom
+    else:
+        encoding = 'utf-8'
+        bom = True
+
     if first:
-        sys.stdout.write(codecs.BOM_UTF8)
-        output_utf8_string(u"report_date, ad_group, ad_name, impressions, " +
-            "clicks, total_cost_in_cents")
+        if bom:
+            if encoding == 'utf-8':
+                sys.stdout.write(codecs.BOM_UTF8)
+            elif encoding == 'utf-16':
+                sys.stdout.write(codecs.BOM_UTF16)
+            elif encoding == 'utf-16-be':
+                sys.stdout.write(codecs.BOM_UTF16_BE)
+            elif encoding == 'utf-16-le':
+                sys.stdout.write(codecs.BOM_UTF16_LE)
+            elif encoding == 'utf-32':
+                sys.stdout.write(codecs.BOM_UTF32)
+            elif encoding == 'utf-32-be':
+                sys.stdout.write(codecs.BOM_UTF32_BE)
+            elif encoding == 'utf-32-le':
+                sys.stdout.write(codecs.BOM_UTF32_LE)
+            else:
+                logging.warning("Unicode BOM requested for unknown codec, '%s'" % encoding)
+
+        output_encoded_string(u"report_date, ad_group, ad_name, impressions, " +
+            "clicks, total_cost_in_cents", encoding)
 
     # Dollars to cents
     # Note that there is a great deal wrong with this, but a full treatment of correct
@@ -510,11 +544,31 @@ def default_producer(ad_info, first=False):
         ad_info.clicks,
         total_cost,
     )
-    output_utf8_string(row)
+    output_encoded_string(row, encoding)
 
-def main():
-    reader = AdDataReader(codecs.getreader("utf-8")(sys.stdin), default_producer)
+def main(argv):
+    parser = argparse.ArgumentParser(description="ad metrics CSV processor")
+    parser.add_argument('input', type=str, default='-', nargs='?',
+        help="input file or '-' for stdin (default='utf-8')")
+    parser.add_argument('--input-encoding', dest='input_encoding', action='store',
+        default='utf-8', help="character encoding for input (default='utf-8')")
+    parser.add_argument('--output-encoding', dest='output_encoding', action='store',
+        default='utf-8', help="character encoding for output (default='utf-8')")
+    parser.add_argument('--no-output-bom', dest='no_output_bom', action='store_true',
+        default=False,
+        help="do not output a Unicode BOM at start of output " + \
+            "(--output-encoding=ascii will also disable BOM)")
+    args = parser.parse_args()
+    # Normalize encoding name per rules in codecs module
+    args.output_encoding = args.output_encoding.lower()
+    args.output_encoding.replace('_','-')
+    if args.input == '-':
+        inputfile = sys.stdin
+    else:
+        inputfile = open(args.input, "r")
+    reader = AdDataReader(
+        codecs.getreader(args.input_encoding)(inputfile), default_producer, args)
     reader.process_input()
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)

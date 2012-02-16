@@ -92,17 +92,17 @@ class TestAdDataReader(unittest.TestCase):
     def setUp(self):
         self.click_total = 0
 
-    def null_producer(self, ad_info, first=False):
+    def null_producer(self, ad_info, first, args):
         """A producer that does nothign"""
 
         pass
 
-    def click_totaler_producer(self, ad_info, first=False):
+    def click_totaler_producer(self, ad_info, first, args):
         """A producer that tallies the clicks fields"""
 
         self.click_total += ad_info.clicks
 
-    def date_check_producer(self, ad_info, first=False):
+    def date_check_producer(self, ad_info, first, args):
         """A producer that saves off the data files date value"""
 
         self.sample_date = ad_info.date
