@@ -2,10 +2,11 @@
 
 import sys
 import codecs
-import unittest
 import logging
+import unittest
+from StringIO import StringIO
 
-from admetrics import AdInfo, AdDataReader, CSVError
+from admetrics import AdInfo, AdDataReader, CSVError, CSVReader
 
 class TestAdInfo(unittest.TestCase):
     """Unit tests for the AdInfo class"""
@@ -137,6 +138,60 @@ class TestAdDataReader(unittest.TestCase):
         reader = self.make_reader_from_sample(producer=self.date_check_producer)
         reader.process_input()
         self.assertEqual(self.sample_date, u'2011-01-01')
+
+class TestCSVReader(unittest.TestCase):
+    """Tests for the CSVReader class"""
+
+    def test_simple_csv(self):
+        """Test basic CSV reading capabilities"""
+
+        reader = CSVReader(StringIO("a,b,c\n"))
+        values = reader.parse_line()
+        self.assertEqual(values[0], "a")
+        self.assertEqual(values[1], "b")
+        self.assertEqual(values[2], "c")
+        # End of input signaled by None
+        next = reader.parse_line()
+        self.assertIsNone(next)
+
+    def test_value_trimming(self):
+        """Verify that CSV fields are whitespace-trimmed"""
+
+        reader = CSVReader(StringIO("a, b ,c\n"))
+        values = reader.parse_line()
+        self.assertEqual(values[1], "b")
+
+    def test_reader_unicode(self):
+        """Handle Unicode data via the CSV reader"""
+
+        reader = CSVReader(StringIO(u"a,b,c\n"))
+        values = reader.parse_line()
+        self.assertEqual(values[0], u"a")
+
+    def test_reader_quotes(self):
+        """Test CSV reader basic quote handling"""
+
+        reader = CSVReader(StringIO('a,"b c","d"\n'))
+        values = reader.parse_line()
+        self.assertEqual(values[0], "a")
+        self.assertEqual(values[1], "b c")
+        self.assertEqual(values[2], "d")
+
+    def test_reader_embedded_quotes(self):
+        """Test CSV reader handling of embedded quotes"""
+
+        reader = CSVReader(StringIO('a,"b ""c""",d\n'))
+        values = reader.parse_line()
+        self.assertEqual(values[1], 'b "c"')
+
+    def test_reader_skips_blank_lines(self):
+        """CSV reader should skip blank lines"""
+
+        reader = CSVReader(StringIO("\na,b,c\n \n1,2,3\n"))
+        values = reader.parse_line()
+        self.assertEqual(values[0], "a")
+        values = reader.parse_line()
+        self.assertEqual(values[0], "1")
 
 if __name__ == '__main__':
     unittest.main()
