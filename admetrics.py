@@ -161,6 +161,7 @@ class AdInfo(object):
         else:
             self.ctr = string_to_float(self.data['ctr'])
         self.total_cost = money_string_to_float(self.data['total cost'])
+        self._sanity_check(ctr_tolerance)
 
     def _sanity_check(self, ctr_tolerance):
         """
@@ -190,8 +191,6 @@ class AdInfo(object):
             raise CSVError("Sanity check failed: negative impressions")
         if self.clicks < 0:
             raise CSVError("Sanity check failed: negative clicks")
-        if self.ad_name == "":
-            raise CSVError("Sanity check failed: empty ad name")
         if self.ad_group == "":
             raise CSVError("Sanity check failed: empty ad group")
 
@@ -377,6 +376,9 @@ class AdDataReader(CSVReader):
                         row_data.total_cost, self.accumulator['total cost']))
                 continue
             else:
+                if len(row_data.ad_name) == 0:
+                    self._failure("Empty ad name not allowed")
+                    exit(1)
                 self.accumulator['impressions'] += row_data.impressions
                 self.accumulator['clicks'] += row_data.clicks
                 self.accumulator['total cost'] += row_data.total_cost
