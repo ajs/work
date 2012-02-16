@@ -44,14 +44,6 @@
 #   pull in any non-core external depdendencies. The goal was to have
 #   this work in any environment where a reasonably modern (2.6+) Python
 #   is installed
-# * What I'd like to do, if I were not trying to submit a single file
-#   as my final product, would be to break out the last part of this
-#   file as the framework for a Python "unittest" test and just have
-#   the module elements in this file.
-# * To test this, I ran it on the sample input and diffed the result
-#   against the sample output. If I were taking more time, I'd probably
-#   come up with a wide array of test cases and drop them into their
-#   own unittest tests.
 
 import re
 import sys
