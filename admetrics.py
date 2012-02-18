@@ -269,6 +269,8 @@ class CSVReader(object):
                         values.append(accum.strip())
                         accum = ""
                         state = None
+                    elif c.isspace():
+                        pass
                     else:
                         raise CSVError("Unexpected character '%s' after end-quote" % c)
                 elif state == "data":
@@ -276,6 +278,9 @@ class CSVReader(object):
                         values.append(accum.strip())
                         accum = ""
                         state = None
+                    elif c == '"' and accum.isspace():
+                        accum = ""
+                        state = "quote"
                     else:
                         accum += c
                 else:

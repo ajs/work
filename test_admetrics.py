@@ -191,6 +191,13 @@ class TestCSVReader(unittest.TestCase):
         values = reader.parse_line()
         self.assertEqual(values[1], 'b "c"')
 
+    def test_reader_quotes_with_whitespace(self):
+        """Test handling of whitepsace around quotes"""
+
+        reader = CSVReader(StringIO('a, "b" ,c\n'))
+        values = reader.parse_line()
+        self.assertEqual(values[1], 'b')
+
     def test_reader_skips_blank_lines(self):
         """CSV reader should skip blank lines"""
 
