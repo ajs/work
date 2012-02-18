@@ -1,9 +1,13 @@
 #!/usr/bin/python
 
+# Testing functions for the admetrics module.
+
+import os
 import sys
 import codecs
 import logging
 import unittest
+import subprocess
 from StringIO import StringIO
 
 from admetrics import AdInfo, AdDataReader, CSVError, CSVReader
@@ -113,7 +117,10 @@ class TestAdDataReader(unittest.TestCase):
         if producer is None:
             producer = self.null_producer
         sample = open("sample_input.csv", "r")
-        reader = AdDataReader(codecs.getreader("utf-8")(sample), producer)
+        reader = AdDataReader(
+            codecs.getreader("utf-8")(sample),
+            producer,
+            True)
         return reader
 
     def test_read_given_sample(self):
@@ -192,6 +199,61 @@ class TestCSVReader(unittest.TestCase):
         self.assertEqual(values[0], "a")
         values = reader.parse_line()
         self.assertEqual(values[0], "1")
+
+class TestCommandLine(unittest.TestCase):
+    """Test the command-line handling of the sample main() in admetrics"""
+
+    SAMPLE_IN = "sample_input.csv"
+    SAMPLE_OUT = "sample_output.csv"
+
+    def get_sample_output(self):
+        """Return the contents of the sample output file"""
+
+        return open(self.SAMPLE_OUT, "r").read()
+
+    def test_sample_data(self):
+        """Run the command-line on sample data"""
+
+        metrics_in = open(self.SAMPLE_IN, "r")
+        p = subprocess.Popen(
+            ["./admetrics.py", "--no-total-warning"],
+            stdin=metrics_in,
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr)
+        data_out = p.stdout.read()
+        p.stdout.close()
+        sample_out = self.get_sample_output()
+        self.assertTrue(len(sample_out) > 0)
+        self.assertTrue(sample_out == data_out)
+
+    def test_ascii_encoding(self):
+        """Run the command-line in ascii mode"""
+
+        p = subprocess.Popen(
+            ["./admetrics.py", '--output-encoding=ascii', '--no-total-warning',
+                self.SAMPLE_IN],
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr)
+        data_out = p.stdout.read()
+
+        self.assertTrue('cheap used hondas' in data_out)
+
+    def test_no_bom(self):
+        """Run the command-line on sample data, but omit BOM"""
+        
+        metrics_in = open(self.SAMPLE_IN, "r")
+        p = subprocess.Popen(
+            ["./admetrics.py", '--no-total-warning'],
+            stdin=metrics_in,
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr)
+        data_out = p.stdout.read()
+        p.stdout.close()
+
+        sample_out = self.get_sample_output()
+
+        self.assertTrue(len(data_out) > 0)
+        self.assertTrue(sample_out == data_out)
 
 if __name__ == '__main__':
     unittest.main()

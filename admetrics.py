@@ -313,10 +313,12 @@ class AdDataReader(CSVReader):
         "jul":"07", "aug":"08", "sep":"09", "oct":"10", "nov":"11", "dec":"12",
     }
 
-    def __init__(self, source, produce, *args):
+    def __init__(self, source, produce, no_total_warning, *args):
         """
-        Initialize the reader with an input source and a callback that will be
-        invoked with the resulting AdInfo object from a line read from the data file.
+        Initialize the reader with an input source, a callback that will be
+        invoked with the resulting AdInfo object from a line read from the data file,
+        and a true/false flag for issuing warnings on lines that appear to be
+        summary or total lines.
 
         The produce callback will be passed a named parameter, "first", which
         will be True the first time it is invoked for an output file and False
@@ -334,6 +336,7 @@ class AdDataReader(CSVReader):
 
         self.produce = produce
         self.produce_args = args
+        self.no_total_warning = no_total_warning
         self.date = None
         self.colnames = None
         self.accumulator = { 'clicks':0, 'impressions':0, 'total cost':0 }
@@ -365,7 +368,8 @@ class AdDataReader(CSVReader):
             # The original sample input file used "Total" as an ad group to denote
             # the summary line. Google's Ad Sense reports use "--", so I handle both.
             if row_data.ad_group.lower() == 'total' or row_data.ad_group == "--":
-                self._warning("Not saving input with ad group, '%s'" % row_data.ad_group)
+                if not self.no_total_warning:
+                    self._warning("Not saving input with ad group, '%s'" % row_data.ad_group)
                 if row_data.impressions != self.accumulator['impressions']:
                     self._failure("Total impressions in summary (%d) != our tally (%d)" % (
                         row_data.impressions, self.accumulator['impressions']))
@@ -558,6 +562,9 @@ def main(argv):
         default=False,
         help="do not output a Unicode BOM at start of output " + \
             "(--output-encoding=ascii will also disable BOM)")
+    parser.add_argument('--no-total-warning', dest='no_total_warning',
+        action='store_true', default=False,
+        help="do not print a warning on summary lines")
     args = parser.parse_args()
     # Normalize encoding name per rules in codecs module
     args.output_encoding = args.output_encoding.lower()
@@ -566,8 +573,13 @@ def main(argv):
         inputfile = sys.stdin
     else:
         inputfile = open(args.input, "r")
+    if args.output_encoding == "ascii":
+        args.no_output_bom = True
     reader = AdDataReader(
-        codecs.getreader(args.input_encoding)(inputfile), default_producer, args)
+        codecs.getreader(args.input_encoding)(inputfile),
+        default_producer,
+        args.no_total_warning,
+        args)
     reader.process_input()
 
 if __name__ == "__main__":
