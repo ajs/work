@@ -1,0 +1,8 @@
+=head1 Hello
+
+This is a collection of vaguely work-related programming projects that aren't
+so directly tied to any one employer of mine that they belong in company
+revision control systems (I<at least exclusively>, though it might make
+sense to pull these in to local revision control wherever I am as well).
+
+-Aaron Sherman C<< <ajs@ajs.com> >>
