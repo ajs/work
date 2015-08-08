@@ -127,8 +127,10 @@ def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     hexed = hashed.encode("hex")
     # Strip off high and low bit, which hashing functions might set
     # to 1 due to the ways hashes get used.
-    stripped = (int(hexed, 16) >> 1) & (2**(hashbits-2)-1)
-    return _map_range(stripped, 2**(hashbits-2), 7)
+    shortbits = hashbits - 2
+    shortrange = 2**shortbits
+    stripped = (int(hexed, 16) >> 1) & (shortrange-1)
+    return _map_range(stripped, shortrange, 7)
 
 def rand7by5_lottery():
     """
