@@ -111,8 +111,7 @@ def rand7by5_prng2(prng=random.Random):
 def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     """
     Given a hash function, build a string from our source, hash it
-    and then normalize the hash as an integer to our range via
-    floating point.
+    and then normalize the hash as an integer to our range.
 
     Hashes need to have the property of each input bit having a
     uniform impact on each output bit (e.g. if input[x] is 1
