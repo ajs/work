@@ -16,17 +16,13 @@ import numpy
 def _map_range(value, source_range, target_range):
     """
     Given a source range like 2**32, map a value from that
-    range to a value in target range, e.g. 5. For best
-    results (to minimize the impact of target_range not being
-    a divisor of source_range, make sure that source_range is
-    several orders of magnitude larger than target_range).
+    range to a value in target range, e.g. 5.
+
+    To minimize the impact of source_range not being a
+    multiple of target_range, we just use modular arithmetic.
     """
 
-    granularity = source_range // target_range
-    if value > (granularity * target_range):
-        return value % target_range
-    else:
-        return value // granularity
+    return value % target_range
 
 def _rand_n(target, bits=32):
     """
@@ -56,7 +52,7 @@ def _rand7():
 
     return _rand_n(7)
 
-def _populate_bits(func, source_bits, bits=16):
+def _populate_bits(func, source_bits, bits=30):
     """
     `func` is a function that returns an integer which occupies
     at most `source_bits` number of bits. Return an integer
@@ -70,15 +66,16 @@ def _populate_bits(func, source_bits, bits=16):
 
     t = 0
     for i in range(0, (bits//source_bits)):
-        t += func() << (bits*i)
-    return t
+        t ^= func() << (source_bits*i)
+    return t & (2**bits-1)
 
-def _populate_bits2(func, source_bits, bits=32):
+def _populate_bits2(func, source_bits, bits=30):
     """
     Different strategy for some result as _populate_bits.
     """
 
-    bits += 2
+    slop = source_bits - 1
+    bits += slop*2
 
     shifts = bits - source_bits + 1
     if shifts <= 0:
@@ -87,7 +84,7 @@ def _populate_bits2(func, source_bits, bits=32):
     t = 0
     for i in range(0, shifts):
         t ^= func() << i
-    return ( (t >> 1) & (2**(bits-2)-1) )
+    return ( (t >> slop) & (2**(bits-slop*2)-1) )
 
 def rand7by5_prng(prng=random.Random):
     """
@@ -107,6 +104,19 @@ def rand7by5_prng2(prng=random.Random):
     seed = _populate_bits2(_rand5, source_bits=3)
     _prng = prng(seed)
     return _prng.randint(0, 6)
+
+def rand7by5_mod():
+    """
+    Just build a large integer from the random source
+    and then map it to the target range.
+    """
+
+    big = _populate_bits(_rand5, source_bits=3, bits=32)
+    return _map_range(big, 2**32, 7)
+
+def rand7by5_mod2():
+    big = _populate_bits2(_rand5, source_bits=3, bits=32)
+    return _map_range(big, 2**32, 7)
 
 def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     """
@@ -253,13 +263,6 @@ class RandTest(unittest.TestCase):
             stars = "".join(["*" for _ in range(int((hist[i]/m) * 61))])
             print "%-4d: %-60s" % (i, stars)
 
-    def test_map_range(self):
-        """Make sure we map ranges correctly"""
-
-        self.assertEqual(_map_range(9, 15, 5), 3)
-        self.assertEqual(_map_range(0, 2**32, 5), 0)
-        self.assertEqual(_map_range(300, 2**32, 5), 0)
-
     def test_rand_n_10(self):
         """Coverage of output range for _rand_n(10)"""
 
@@ -291,6 +294,14 @@ class RandTest(unittest.TestCase):
     def test_rand7by5_timing(self):
         hist = self._random_coverage(rand7by5_timing, 7)
         self._hist_coverage("rand7by5_timing", hist)
+
+    def test_rand7by5_mod(self):
+        hist = self._random_coverage(rand7by5_mod, 7)
+        self._hist_coverage("rand7by5_mod", hist)
+
+    def test_rand7by5_mod2(self):
+        hist = self._random_coverage(rand7by5_mod2, 7)
+        self._hist_coverage("rand7by5_mod2", hist)
 
 
 if __name__ == '__main__':
