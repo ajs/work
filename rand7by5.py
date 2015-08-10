@@ -86,6 +86,28 @@ def _populate_bits2(func, source_bits, bits=30):
         t ^= func() << i
     return ( (t >> slop) & (2**(bits-slop*2)-1) )
 
+def _basenum(base=5, digits=2, func=_rand5):
+    """
+    Return a randomly generated numnber by calling the random
+    function func digits times, which returns a positive
+    integer < base. The range of the result is less than base**digits.
+    """
+
+    n = 0
+    for i in range(digits):
+        n += func() * (base**i)
+    return n
+
+# Notation key:
+#
+# bad - known to have a non-uniform distribution
+# slow - uses some sort of loop that can be noticably slow
+# large - uses an amount of memory that scales poorly
+# infinite - has no theoretical upper-bound on time
+# external - essentially relies on an external solution
+# none - none of the above notes apply
+
+# bad, external
 def rand7by5_prng(prng=random.Random):
     """
     Given a PRNG, build a seed from our source and get an answer.
@@ -100,11 +122,13 @@ def rand7by5_prng(prng=random.Random):
     _prng = prng(seed)
     return _prng.randint(0, 6)
 
+# external
 def rand7by5_prng2(prng=random.Random):
     seed = _populate_bits2(_rand5, source_bits=3)
     _prng = prng(seed)
     return _prng.randint(0, 6)
 
+# bad
 def rand7by5_mod():
     """
     Just build a large integer from the random source
@@ -114,10 +138,12 @@ def rand7by5_mod():
     big = _populate_bits(_rand5, source_bits=3, bits=32)
     return _map_range(big, 2**32, 7)
 
+# none
 def rand7by5_mod2():
     big = _populate_bits2(_rand5, source_bits=3, bits=32)
     return _map_range(big, 2**32, 7)
 
+# bad, external
 def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     """
     Given a hash function, build a string from our source, hash it
@@ -129,6 +155,10 @@ def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     for any given bit in the output to be flipped vs. if input[x]
     were 0). Given this property, the result of this function
     will be uniform.
+
+    In testing, this proves to be poor for md5. Not sure why,
+    but perhaps md5 is generating a result that is not uniform
+    with respect to mod 7?
     """
 
     seed = _populate_bits2(_rand5, source_bits=3)
@@ -141,6 +171,7 @@ def rand7by5_hash(hashfunc=hashlib.md5, hashbits=128):
     stripped = (int(hexed, 16) >> 1) & (shortrange-1)
     return _map_range(stripped, shortrange, 7)
 
+# bad, slow, infinite, large
 def rand7by5_lottery():
     """
     A datastructures approach.
@@ -153,6 +184,9 @@ def rand7by5_lottery():
     the number of recursive calls should be relatively small,
     and the major performance hit will be the memory usage, but
     for 7 possible values, this is a fine approach.
+
+    Note entirely clear why this fails to be uniform. Could be
+    a bug.
     """
 
     def _winners(s, win):
@@ -175,8 +209,36 @@ def rand7by5_lottery():
                 # Resolve ties recursively
                 return mapping[_lottery(win=win, mapping=winners)]
 
-    return _lottery(win=20, mapping=range(7))
+    return _lottery(win=10, mapping=range(7))
 
+_rand7by5_lookup_table = None
+
+# large, infinite
+def rand7by5_lookup():
+    """
+    Top solution from StackOverflow:
+
+    http://stackoverflow.com/questions/137783/expand-a-random-range-from-1-5-to-1-7
+    """
+
+    global _rand7by5_lookup_table
+    if _rand7by5_lookup_table is None:
+        source_range = 5
+        target_range = 7
+        lookup = [[0 for _ in range(source_range)] for __ in range(source_range)]
+        for i in range(source_range**2 // target_range):
+            for j in range(target_range):
+                index = i*target_range + j
+                lookup[index // source_range][index % source_range] = j+1
+        _rand7by5_lookup_table = lookup
+    else:
+        lookup = _rand7by5_lookup_table
+    result = 0
+    while result == 0:
+        result = lookup[_rand5()][_rand5()]
+    return result - 1
+
+# bad, slow
 def rand7by5_modmap():
     """
     This is the simplest solution, but for very large target ranges,
@@ -203,7 +265,12 @@ def rand7by5_modmap():
         t %= 7
     return t
 
-def rand7by5_timing(bits=32, timing_checks=100):
+# none
+# This could be improved. Theoretically, the only drawback
+# is that it requires a statistically significant number of
+# calls to _rand5, but that scales reasonably well with respect
+# to the source and target number of bits.
+def rand7by5_timing(bits=32, timing_checks=50):
     """Use timing on _rand5 to build an entropy pool"""
 
     # XXX We need to comb out the signal, here per RFC 4086
@@ -211,20 +278,60 @@ def rand7by5_timing(bits=32, timing_checks=100):
     for i in range(timing_checks):
         bit = i % bits
         start = time.time()
-        _ = _rand5()
+        # Since we know _rand5() involves externalities,
+        # we can trust the optimizer not to chuck this...
+        _rand5()
         end = time.time()
         delta = end - start
         assert delta != 0
-        low = int(delta * 1000000) & 3 # low 2 bits of microseconds
-        t ^= (low << bit) & (2**bits - 1)
+        low = int(delta * 10000000) & 255 # low 8 bits of 0.1 x usec
+        t ^= low << bit
     return _map_range(t, 2**bits, 7)
+
+# infinite
+def rand7by5_basemod():
+    """
+    Use _rand5 to generate two digits of a base-5 number and re-try
+    if the result is outside of the range that uniformly divides by
+    7.
+
+    Kevin's solution.
+    """
+
+    source_range = 5
+    target_range = 7
+    digits = 2
+    boundary = ((source_range ** digits) // target_range) * target_range
+
+    def _roll_dice():
+        result = _basenum(base=source_range, digits=digits, func=_rand5)
+        if result >= boundary:
+            return _roll_dice()
+        else:
+            return result % target_range
+
+    return _roll_dice()
+
+# none
+def rand7by5_basescale():
+    """
+    Use _rand5 to generate digits in a large base-5 number, then
+    scale the result to the target range.
+
+    Probably the simplest and most defensible answer that doesn't
+    scale poorly or have an unbounded runtime.
+    """
+
+    n = _basenum(base=5, digits=10, func=_rand5)
+    return _map_range(n, 5**10, 7)
 
 
 class RandTest(unittest.TestCase):
     """Unit tests for the above code, both internal and public interfaces"""
 
-    # Number of times to call a random number function for testing
-    trials = 10000
+    # Number of times to call a random number function for testing.
+    # Increase this number for more accurate assessment.
+    trials = 100000
 
     def _random_coverage(self, func, size, *args, **kwargs):
         """Coverage of output of random number function"""
@@ -302,6 +409,18 @@ class RandTest(unittest.TestCase):
     def test_rand7by5_mod2(self):
         hist = self._random_coverage(rand7by5_mod2, 7)
         self._hist_coverage("rand7by5_mod2", hist)
+
+    def test_rand7by5_lookup(self):
+        hist = self._random_coverage(rand7by5_lookup, 7)
+        self._hist_coverage("rand7by5_lookup", hist)
+
+    def test_rand7by5_basemod(self):
+        hist = self._random_coverage(rand7by5_basemod, 7)
+        self._hist_coverage("rand7by5_basemod", hist)
+
+    def test_rand7by5_basescale(self):
+        hist = self._random_coverage(rand7by5_basescale, 7)
+        self._hist_coverage("rand7by5_basescale", hist)
 
 
 if __name__ == '__main__':
