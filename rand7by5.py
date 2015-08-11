@@ -24,23 +24,33 @@ def _map_range(value, source_range, target_range):
 
     return value % target_range
 
+def _map_string(s, target_range):
+    """
+    Given a string `s` of binary data, return its integer representation
+    re-mapped (scaled via _map_range) to the `target_range` (where that
+    is an integer that would yield the target range when passed to the
+    `range()` builtin.
+    """
+
+    return _map_range(int(s.encode("hex"), 16), 2**(8*len(s)), target_range)
+
 def _rand_n(target, bits=32):
     """
-    Return an integer in the range 0 - `target`, non-inclusive,
+    Return an integer picked uniformly as if from `range(target)`,
     by extracting `bits` number of random bits from the system's
     random number generator (`/dev/urandom` under Linux) and then
     mapping the result to the target range. For uniformity, value of
     `2**bits` should either be at least a couple of orders of
-    magnitude larger than `target` or equal to it.
+    magnitude larger than `target` or an integer multiple of it.
     """
 
     if (bits % 8) != 0:
         raise ValueError("Must request multiple of 8 bits")
-    if bits == 0:
+    elif bits == 0:
         raise ValueError("Funny, wiseguy")
 
     n = os.urandom(bits//8)
-    return _map_range(int(n.encode('hex'), 16), 2**bits, target)
+    return _map_string(n, target)
 
 def _rand5():
     """Our known random source of integers in range 0-4"""
@@ -89,8 +99,9 @@ def _populate_bits2(func, source_bits, bits=30):
 def _basenum(base=5, digits=2, func=_rand5):
     """
     Return a randomly generated numnber by calling the random
-    function func digits times, which returns a positive
-    integer < base. The range of the result is less than base**digits.
+    function `func`, `digit` times, which returns a positive
+    integer < `base`. The range of the result is less than
+    `base**digits`.
     """
 
     n = 0
@@ -101,8 +112,8 @@ def _basenum(base=5, digits=2, func=_rand5):
 # Notation key:
 #
 # bad - known to have a non-uniform distribution
-# slow - uses some sort of loop that can be noticably slow
-# large - uses an amount of memory that scales poorly
+# slow - uses some sort of loop that scales poorly with input or output size
+# large - uses an amount of memory that scales poorly with input or output size
 # infinite - has no theoretical upper-bound on time
 # external - essentially relies on an external solution
 # none - none of the above notes apply
@@ -110,7 +121,8 @@ def _basenum(base=5, digits=2, func=_rand5):
 # bad, external
 def rand7by5_prng(prng=random.Random):
     """
-    Given a PRNG, build a seed from our source and get an answer.
+    Given a `prng` which matches `random.Random`'s interface,
+    build a seed from our source and get an answer.
 
     This depends heavily on your PRNG having a very good uniformity
     for non-uniform seeds that contain sufficient entropy.
@@ -223,6 +235,10 @@ def rand7by5_lookup():
 
     global _rand7by5_lookup_table
     if _rand7by5_lookup_table is None:
+        # Can theoretically work for any source_range and target_range
+        # where source_range**2 > target_range, but the amount
+        # of memory consumed scales with the square of the source_range
+        # as well!
         source_range = 5
         target_range = 7
         lookup = [[0 for _ in range(source_range)] for __ in range(source_range)]
@@ -313,17 +329,81 @@ def rand7by5_basemod():
     return _roll_dice()
 
 # none
-def rand7by5_basescale():
+def rand7by5_basescale(order=10):
     """
     Use _rand5 to generate digits in a large base-5 number, then
     scale the result to the target range.
 
     Probably the simplest and most defensible answer that doesn't
     scale poorly or have an unbounded runtime.
+
+    The answer is not perfect, but the error is deterministic and
+    easily tuned. Here's the error for all values of order in the
+    range 2-10:
+
+        2 : 16% err
+        3 : 4.8% err
+        4 : 0.32% err
+        5 : 0.096% err
+        6 : 0.0064% err
+        7 : 0.0064% err
+        8 : 0.001024% err
+        9 : 0.0003072% err
+        10: 0.00002048% err
+
+    For just about any practical purpose, such a low error should
+    be lost in the noise, but it's worth knowing.
     """
 
-    n = _basenum(base=5, digits=10, func=_rand5)
-    return _map_range(n, 5**10, 7)
+    n = _basenum(base=5, digits=order, func=_rand5)
+    return _map_range(n, 5**order, 7)
+
+# none
+def rand7by5_basescale5():
+    """
+    same as basescale, but set order=5, giving an error rate of
+    0.096% instead of 0.00002048%, but also make the calculation
+    very slightly faster. Really this is just a demonstration of
+    tuning the accuracy.
+    """
+
+    return rand7by5_basescale(order=5)
+
+# external
+def rand7by5_compress(calls=20, bits=64):
+    """
+    Use the zlib module to compress multiple _rand5 results.
+
+    calls indicates how many calls to _rand5 should be concatenated
+    to produce the string that gets compressed.
+
+    bits indicates how many bits should be extracted from compressed
+    data and transformed into our answer (after scaling). A larger
+    value will result in a smoother resulting range, but realistically,
+    even 16 bits should be enough to produce a very reasonable
+    result.
+
+    We don't have to worry about things like the input string being
+    extremely sparse, since that's exactly what zlib is good at
+    dealing with. For more information on the theory behind using
+    compression to de-skew a semi-random source, see RFC 4086.
+
+    One warning: if calls is too small, the compressed data may be
+    too small to avoid our answer containing some of the zlib header
+    info, and thus a very non-random source. To avoid this, a
+    minimum calls value of about 10 is recommended.
+    """
+
+    # Runtime import so that exceptions only kill this implementation
+    zlib = __import__("zlib")
+
+    bytes = bits // 8
+    s = "".join([ str(_rand5()) for _ in range(calls) ])
+    c = zlib.compress(s)
+    # Strip bits number of bits out of the compressed data (skip header
+    # and trailing markers)
+    data = c[-(bytes+2):-2]
+    return _map_string(data, 7)
 
 
 class RandTest(unittest.TestCase):
@@ -421,6 +501,14 @@ class RandTest(unittest.TestCase):
     def test_rand7by5_basescale(self):
         hist = self._random_coverage(rand7by5_basescale, 7)
         self._hist_coverage("rand7by5_basescale", hist)
+
+    def test_rand7by5_basescale5(self):
+        hist = self._random_coverage(rand7by5_basescale5, 7)
+        self._hist_coverage("rand7by5_basescale5", hist)
+
+    def test_rand7by5_compress(self):
+        hist = self._random_coverage(rand7by5_compress, 7)
+        self._hist_coverage("rand7by5_compress", hist)
 
 
 if __name__ == '__main__':
