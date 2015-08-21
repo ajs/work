@@ -25,7 +25,7 @@ function stripinto(item, source, target) {
     return null;
 }
 
-function connect_nodes(path, radius, margin, verts, node1, node2) {
+function connect_nodes(radius, margin, verts, node1, node2) {
     var center_x = radius + margin;
     var center_y = radius + margin;
     var circum = Math.PI*2
@@ -39,14 +39,10 @@ function connect_nodes(path, radius, margin, verts, node1, node2) {
     var x2 = center_x + radius * Math.sin(angle2);
     var y2 = center_y + radius * Math.cos(angle2);
 
-    path.moveTo(x1, y1);
-    path.lineTo(x2, y2);
+    return [ [x1, y1], [x2, y2] ]
 }
 
-function draw_connections(canvas, all) {
-    var ctx = canvas.getContext('2d');
-    var path = new Path2D;
-
+function draw_connections(all) {
     var radius=200;
     var margin=20;
     var verts = all.length;
@@ -62,6 +58,7 @@ function draw_connections(canvas, all) {
 	return false;
     }
 
+    var lines = [];
     for (var i = 0; i < verts; i+=2) {
 	var trip = all[i];
 	for (var j = 1; j < verts; j+=2) {
@@ -73,12 +70,11 @@ function draw_connections(canvas, all) {
 	    if (!listinlist(pair, trip)) {
 		continue;
 	    }
-	    connect_nodes(path, radius, margin, verts, i, j);
+	    lines = lines.concat(connect_nodes(radius, margin, verts, i, j))
 	}
     }
 
-    ctx.lineWidth = 2;
-    ctx.stroke(path);
+    return lines;
 }
 
 function add_debug(all) {
@@ -99,12 +95,6 @@ function add_debug(all) {
 }
 
 function draw() {
-    var canvas = document.getElementById('30gon');
-
-    if (!canvas.getContext) {
-	return;
-    }
-
     all30 = [[[0, 1], [2, 3], [4, 5]],
 	     [0, 1],
 	     [[0, 1], [2, 4], [3, 5]],
@@ -136,5 +126,19 @@ function draw() {
 	     [[0, 2], [1, 3], [4, 5]],
 	     [4, 5]];
 
-    draw_connections(canvas, all30);
+    lines = draw_connections(all30);
+
+    var drawarea = document.getElementById('svg1');
+    var svg = "";
+    for (var i = 0; i < lines.length; i+=2) {
+	var point1 = lines[i];
+	var point2 = lines[i+1];
+	var x1 = point1[0];
+	var y1 = point1[1];
+	var x2 = point2[0];
+	var y2 = point2[1];
+	svg += "<line x1="+x1+" y1="+y1+" x2="+x2+" y2="+y2;
+	svg += " class=\"geometryline\" />\n"
+    }
+    drawarea.innerHTML = svg
 }

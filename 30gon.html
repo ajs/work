@@ -3,9 +3,15 @@
 <head>
 <title>Test 30gon</title>
 <script type="text/javascript" src="30gon.js"></script>
+<style>
+.geometryline {
+    stroke: rgb(0,0,0);
+    stroke-width: 2;
+}
+</style>
 </head>
 <body onload="draw();">
-<div id="canvasdiv"><canvas id="30gon" height=600 width=800 /></div>
+<div id="svgdiv"><svg height=600 width=800 id="svg1"></svg></div>
 <div id="debug"></div>
 </body>
 </html>
