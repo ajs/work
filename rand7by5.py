@@ -370,7 +370,7 @@ def rand7by5_basescale5():
     return rand7by5_basescale(order=5)
 
 # external
-def rand7by5_compress(calls=20, bits=64):
+def rand7by5_compress(calls=30, bits=64):
     """
     Use the zlib module to compress multiple _rand5 results.
 
