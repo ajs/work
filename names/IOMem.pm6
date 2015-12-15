@@ -184,7 +184,9 @@ class IO::Str is IO::Mem {
         my @endings = |(self.nl-in);
         my $ending = rx{@endings$};
         my $buffer = "";
+        my $cread = 0;
         for self.source.substr(self.pos).comb -> $c {
+            $cread++;
             $buffer ~= $c;
             self.pos += 1;
             if $buffer ~~ $ending {
@@ -194,7 +196,7 @@ class IO::Str is IO::Mem {
                 return $buffer;
             }
         }
-        if $buffer.chars == 0 {
+        if $cread == 0 {
             $buffer = Nil;
         }
         return $buffer;
@@ -223,8 +225,13 @@ class IO::Str is IO::Mem {
 }
 
 my $sio = IO::Str.new(:source("Line1\nLine2\nLine3\n"));
-say "EOF: {$sio.eof}";
-for $sio.lines -> $line { say $line; }
-say "EOF: {$sio.eof}";
+say "String 1 Start POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
+for $sio.lines -> $line { say $line.perl; }
+say "String 1 End POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
+
+$sio = IO::Str.new(:source("Line1\nLine2\n\nLine3"), :chomp(False));
+say "String 2 Start POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
+for $sio.lines -> $line { say $line.perl; }
+say "String 2 End POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
 
 # vim: ft=perl6 expandtab sw=4 softtabstop=4 ai
