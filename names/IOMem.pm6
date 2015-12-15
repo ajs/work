@@ -9,7 +9,6 @@ class IO::Mem is IO::Handle {
     has $.nl-in = ["\x0A", "\r\n"];
     has Str:D $.nl-out is rw = "\n";
     has $.mode;
-    has $.enc = 'utf8';
 
     method open(IO::Mem:D:
       :$r, :$w, :$a, :$update,
@@ -21,7 +20,7 @@ class IO::Mem is IO::Handle {
       :$exclusive is copy,
       :$bin,
       :$chomp = True,
-      :$enc   = 'utf8',
+      :$enc   = Nil,
       :$nl-in is copy = ["\x0A", "\r\n"],
       Str:D :$nl-out is copy = "\n",
     ) {
@@ -46,7 +45,6 @@ class IO::Mem is IO::Handle {
 	}
 	$!mode = $mode;
 	$!opened = True;
-	# TODO $enc handling
 	self;
     }
 
@@ -95,8 +93,21 @@ class IO::Mem is IO::Handle {
     method Supply(IO::Mem:D: :$size = 65536, :$bin --> Supply:D) { ... }
 
     proto method seek(|) { * }
-    multi method seek(IO::Mem:D: Int:D $offset, Int:D $whence --> True) { ... }
-    multi method seek(IO::Mem:D: Int:D $offset, SeekType:D $whence) { ... }
+    multi method seek(IO::Mem:D: Int:D $offset, Int:D $whence --> True) {
+        die "Use SeekType for whence parameter";
+    }
+    multi method seek(IO::Mem:D: Int:D $offset, SeekType:D $whence) {
+        my $where;
+        if $whence == SeekType::SeekFromBeginning {
+            $where = $offset;
+        } elsif $whence == SeekType::SeekFromCurrent {
+            $where = self.pos + $offset;
+        } elsif $whence == SeekType::SeekFromEnd {
+            $where = self.sourcelen - $offset;
+        }
+        $!pos = min(self.sourcelen, $where);
+        return True;
+    }
 
     method tell(IO::Mem:D:) returns Int { return $!pos }
 
@@ -163,23 +174,27 @@ class IO::Mem is IO::Handle {
 
 class IO::Str is IO::Mem {
     # Return the length of $!source
-    method sourcelen(IO::Mem:D:) { self.source.chars; }
+    method sourcelen(IO::Str:D:) { self.source.chars; }
     # Return a portion of $!source without advancing $!pos
-    method sourcepart(IO::Mem:D: Cool $length) {
+    method sourcepart(IO::Str:D: Cool $length) {
         self.source.substr(self.pos, $length);
     }
     # Return the pos of $what in $!source or undefined
-    method sourcefind(IO::Mem:D: Cool $what) {
+    method sourcefind(IO::Str:D: Cool $what) {
         self.source.index($what, self.pos);
     }
     # Return a portion of $!source, advancing $!pos
-    method takepart(IO::Mem:D: Cool $length) {
+    method takepart(IO::Str:D: Cool $length) {
         my $part = self.sourcepart($length);
         self.pos += $length;
         return $part;
     }
+    method takerest(IO::Str:D:) {
+        return self.source.substr(self.pos);
+        LAST { self.pos = self.sourcelen; }
+    }
     # Return one "line" from $!source
-    method get(IO::Mem:D:) {
+    method get(IO::Str:D:) {
         return Nil unless self.opened;
         my @endings = |(self.nl-in);
         my $ending = rx{@endings$};
@@ -202,7 +217,7 @@ class IO::Str is IO::Mem {
         return $buffer;
     }
 
-    method getc(IO::Mem:D:) {
+    method getc(IO::Str:D:) {
         return Nil unless self.opened;
         if self.pos < self.source.chars {
             my $c = self.source.substr(self.pos, 1);
@@ -214,14 +229,26 @@ class IO::Str is IO::Mem {
     }
 
     proto method lines (|) { * }
-    multi method lines(IO::Mem:D: $limit) { }
-    multi method lines(IO::Mem:D: :$close) {
+    multi method lines(IO::Str:D: $limit) { }
+    multi method lines(IO::Str:D: :$close) {
         gather loop {
             my $line = self.get;
             last if not $line.defined;
             take $line;
         }
     }
+
+    proto method slurp-rest(|) { * }
+    multi method slurp-rest(IO::Str:D: :$bin!) returns Buf {
+        Buf.new(self.takerest.comb.map(-> $_ {.ord}));
+    }
+    multi method slurp-rest(IO::Str:D: :$enc) returns Str {
+        if $enc.defined {
+            die "slurp-rest(:enc) unsupported";
+        }
+        return self.takerest;
+    }
+
 }
 
 my $sio = IO::Str.new(:source("Line1\nLine2\nLine3\n"));
