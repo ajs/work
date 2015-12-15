@@ -38,7 +38,7 @@ class IO::Mem is IO::Handle {
             default { 'ro' }
         }
 	if $truncate and not $append {
-	    $!source = .sourcepart(0);
+	    $!source = self.sourcepart(0);
 	}
 	if $append {
 	    $!pos = $!source.chars;
@@ -67,11 +67,11 @@ class IO::Mem is IO::Handle {
     method get(IO::Mem:D:) { ... }
 
     method eof(IO::Mem:D:) {
-	$!pos == .sourcelen;
+	$!pos == self.sourcelen;
     }
 
     method getc(IO::Mem:D:) {
-	return .takepart(1);
+	return self.takepart(1);
     }
 
     proto method comb(|) { * }
@@ -163,22 +163,25 @@ class IO::Mem is IO::Handle {
 
 class IO::Str is IO::Mem {
     # Return the length of $!source
-    method sourcelen(IO::Mem:D:) { .source.chars; }
+    method sourcelen(IO::Mem:D:) { self.source.chars; }
     # Return a portion of $!source without advancing $!pos
-    method sourcepart(IO::Mem:D: Cool $length) { .source.substr(.pos, $length); }
+    method sourcepart(IO::Mem:D: Cool $length) {
+        self.source.substr(self.pos, $length);
+    }
     # Return the pos of $what in $!source or undefined
-    method sourcefind(IO::Mem:D: Cool $what) { .source.index($what, .pos); }
+    method sourcefind(IO::Mem:D: Cool $what) {
+        self.source.index($what, self.pos);
+    }
     # Return a portion of $!source, advancing $!pos
     method takepart(IO::Mem:D: Cool $length) {
-        my $part = .sourcepart($length);
-        .pos += $length;
+        my $part = self.sourcepart($length);
+        self.pos += $length;
         return $part;
     }
     # Return one "line" from $!source
     method get(IO::Mem:D:) {
         return Nil unless self.opened;
         my @endings = |(self.nl-in);
-        say "Endings {@endings.perl}";
         my $ending = rx{@endings$};
         my $buffer = "";
         for self.source.substr(self.pos).comb -> $c {
@@ -210,7 +213,18 @@ class IO::Str is IO::Mem {
 
     proto method lines (|) { * }
     multi method lines(IO::Mem:D: $limit) { }
-    multi method lines(IO::Mem:D: :$close) { ... }
+    multi method lines(IO::Mem:D: :$close) {
+        gather loop {
+            my $line = self.get;
+            last if not $line.defined;
+            take $line;
+        }
+    }
 }
 
-# vim: ft=perl6 expandtab sw=4
+my $sio = IO::Str.new(:source("Line1\nLine2\nLine3\n"));
+say "EOF: {$sio.eof}";
+for $sio.lines -> $line { say $line; }
+say "EOF: {$sio.eof}";
+
+# vim: ft=perl6 expandtab sw=4 softtabstop=4 ai
