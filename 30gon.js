@@ -1,3 +1,7 @@
+
+// Inspired by John Baez:
+// https://plus.google.com/u/0/117663015413546257905/posts/bPCvcDTDysi
+
 function pairsof(a) {
     var pairs = [];
     var range = a.length;

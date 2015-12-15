@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 
+# Generate the dataset used in John Baez's posting here:
+# https://plus.google.com/u/0/117663015413546257905/posts/bPCvcDTDysi
+
 import pprint
+import logging
 import itertools
+
 
 def digitsin(t):
     return itertools.chain(*t)
@@ -14,14 +19,12 @@ def unique(l):
         alle.add(e)
     return True
 
-def atindex(a, i, default=None):
-    try:
-        return a[i]
-    except IndexError:
-        return default
-
 def listinlist(l1, l2):
     return repr(l1) in (repr(e) for e in l2)
+
+
+logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.DEBUG)
 
 digits = range(6)
 pairs = [list(x) for x in itertools.combinations(digits, 2)]
@@ -51,7 +54,7 @@ while i < total:
         i -= 1
         continue
 
-    print [ posind[e] for e in range(i) ]
+    logging.debug("Step: %r" % [ posind[e] for e in range(i) ])
     cur = atpos[i][posind[i]]
     posind[i] += 1
 
@@ -65,4 +68,4 @@ while i < total:
         all = all[0:i] + [cur]
         i += 1
 
-pprint.pprint(all)
+print "Resulting structure: %r" % (all,)
