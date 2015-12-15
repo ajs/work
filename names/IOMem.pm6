@@ -8,6 +8,7 @@ class IO::Mem is IO::Handle {
     has $.chomp is rw = Bool::True;
     has $.nl-in = ["\x0A", "\r\n"];
     has Str:D $.nl-out is rw = "\n";
+    has $!enc;
     has $.mode;
 
     method open(IO::Mem:D:
@@ -260,5 +261,10 @@ $sio = IO::Str.new(:source("Line1\nLine2\n\nLine3"), :chomp(False));
 say "String 2 Start POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
 for $sio.lines -> $line { say $line.perl; }
 say "String 2 End POS: {$sio.tell} OPEN: {$sio.opened} EOF: {$sio.eof}";
+
+$sio = IO::Str.new(:source("Line1\nLine2\n\nLine3"), :chomp(False));
+say "String 3 from pos=6:";
+$sio.seek(6,SeekType::SeekFromBeginning);
+say $sio.slurp-rest;
 
 # vim: ft=perl6 expandtab sw=4 softtabstop=4 ai
