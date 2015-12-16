@@ -11,6 +11,8 @@ class IO::Mem is IO::Handle {
     has $!enc;
     has $.mode;
 
+    has $.basetype = Any; # subclasses define this
+
     method open(IO::Mem:D:
       :$r, :$w, :$a, :$update,
       :$rw, :$ra,
@@ -63,8 +65,8 @@ class IO::Mem is IO::Handle {
     # Return a portion of $!source, advancing $!pos
     method takepart(IO::Mem:D: Cool $length) { ... }
     # Clear $!source
-    method clearsource(IO::Mem:D:) {
-        $!source = "";
+    method clearsource(IO::Mem:D: \type = Str) {
+        $!source := type.new();
     }
 
     # Return one "line" from $!source

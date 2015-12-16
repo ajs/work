@@ -41,10 +41,10 @@ subtest {
     ok($sio.tell == 0, "tell at start");
     ok($sio.opened, "opened at start");
     ok($sio.eof, "eof at start");
-    ok($sio.say("Line1"), True);
-    ok($sio.print("Line2\n"), True);
+    ok($sio.say("Line1"), "say");
+    ok($sio.print("Line2\n"), "print");
     ok($sio.tell == $sio.source.chars, "At end of file");
-    ok($target ~~ "Line1\nLine2\n", "Wrote two lines to string");
+    ok($target ~~ "Line1\nLine2\n", "Wrote two lines to string ({$target.perl})");
     ok($sio.slurp-rest ~~ "", "slurp-rest at eof");
     ok($sio.seek(0, SeekType::SeekFromBeginning), "seek(0)");
     ok($sio.get ~~ "Line1", "Fist line after seek");

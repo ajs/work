@@ -5,6 +5,8 @@ use IO::Mem;
 
 class IO::Str is IO::Mem {
 
+    has $.basetype = Str;
+
     multi submethod BUILD(
       Str :$source! is rw,
       :$chomp,
@@ -12,8 +14,7 @@ class IO::Str is IO::Mem {
       :$nl-out,
       :$enc,
       :$mode) {
-
-        self.clearsource if not self.source.defined;
+        self.clearsource(Str) if not self.source.defined;
         self;
     }
 
@@ -24,7 +25,7 @@ class IO::Str is IO::Mem {
       :$nl-out,
       :$enc,
       :$mode) {
-        self.clearsource if not self.source.defined;
+        self.clearsource(Str) if not self.source.defined;
         self;
     }
 
@@ -122,22 +123,27 @@ class IO::Str is IO::Mem {
         }
     }
 
-    method write(IO::Str:D: Blob:D $buf --> True) {
+    method write(IO::Str:D: Blob:D $buf) {
         self.print($buf.decode(:enc(self.enc)));
     }
 
-    multi method print(IO::Str:D: Str:D \x --> True) {
-        my $source := self.source;
-        $source.substr-rw(self.pos) = x;
+    multi method print(IO::Str:D: Str:D \x) {
+        my Str $source := self.source;
+        try {
+            $source.substr-rw(self.pos) = x;
+            CATCH { default { $source.BUILD(:value($source ~ x)) } }
+        }
+        self.pos = $source.chars;
+        True;
     }
-    multi method print(IO::Str:D: *@list is raw --> True) {
+    multi method print(IO::Str:D: *@list is raw) {
         self.print(.Str) for @list;
     }
-    multi method put(IO::Str:D: Str:D \x --> True) {
+    multi method put(IO::Str:D: Str:D \x) {
         self.print(x);
         self.print-nl;
     }
-    multi method put(IO::Str:D: *@list is raw --> True) {
+    multi method put(IO::Str:D: *@list is raw) {
         self.print(.Str) for @list;
         self.print-nl;
     }
