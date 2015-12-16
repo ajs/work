@@ -59,7 +59,6 @@ class IO::Str is IO::Mem {
         }
     }
 
-    proto method lines (|) { * }
     multi method lines(IO::Str:D: $limit) { }
     multi method lines(IO::Str:D: :$close) {
         gather loop {
@@ -69,7 +68,6 @@ class IO::Str is IO::Mem {
         }
     }
 
-    proto method slurp-rest(|) { * }
     multi method slurp-rest(IO::Str:D: :$bin!) returns Buf {
         Buf.new(self.takerest.comb.map(-> $_ {.ord}));
     }
@@ -80,6 +78,50 @@ class IO::Str is IO::Mem {
         return self.takerest;
     }
 
+    method read(IO::Str:D: Int(Cool:D) $bytes) {
+        die "Unimplemented: read";
+    }
+    
+    method readchars(Int(Cool:D) $chars = 65536) {
+        return self.takepart($chars);
+    }
+
+    method Supply(IO::Str :$size = 65536, :$bin --> Supply:D) {
+        die "Unsupported :\$bin" if $bin;
+        supply {
+            my $str = self.readchars($chars);
+            while $str.chars {
+                emit $str;
+                $str = self.readchars($chars);
+            }
+            done;
+        }
+    }
+
+    method write(IO::Str:D: Blob:D $buf --> True) {
+        self.soruce.substr(self.pos) = $buf.decode(:enc(self.enc));
+    }
+
+
+    multi method print(IO::Str Str:D \x --> True) {
+        self.source.substr(self.pos) = x;
+    }
+    multi method print(IO::Str *@list is raw --> True) {
+        self.print(.Str) for @list;
+    }
+    multi method put(IO::Str Str:D \x --> True) {
+        self.source.substr(self.pos) = x;
+        self.print-nl;
+    }
+    multi method put(IO::Str *@list is raw --> True) {
+        self.print(.Str) for @list;
+        self.print-nl;
+    }
+
+    multi method say(IO::Mem:D: |c) {
+        self.print: |c.shift.gist while |c;
+        self.print-nl;
+    }
 }
 
 # vim: ft=perl6 expandtab sw=4 softtabstop=4 ai
