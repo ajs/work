@@ -41,8 +41,8 @@ subtest {
     ok($sio.tell == 0, "tell at start");
     ok($sio.opened, "opened at start");
     ok($sio.eof, "eof at start");
-    ok($sio.say("Line1"), 6);
-    ok($sio.print("Line2\n"), 6);
+    ok($sio.say("Line1"), True);
+    ok($sio.print("Line2\n"), True);
     ok($sio.tell == $sio.source.chars, "At end of file");
     ok($target ~~ "Line1\nLine2\n", "Wrote two lines to string");
     ok($sio.slurp-rest ~~ "", "slurp-rest at eof");

@@ -4,6 +4,30 @@
 use IO::Mem;
 
 class IO::Str is IO::Mem {
+
+    multi submethod BUILD(
+      Str :$source! is rw,
+      :$chomp,
+      :$nl-in,
+      :$nl-out,
+      :$enc,
+      :$mode) {
+
+        self.clearsource if not self.source.defined;
+        self;
+    }
+
+    multi submethod BUILD(
+      :$source,
+      :$chomp,
+      :$nl-in,
+      :$nl-out,
+      :$enc,
+      :$mode) {
+        self.clearsource if not self.source.defined;
+        self;
+    }
+
     # Return the length of $!source
     method sourcelen(IO::Str:D:) { (self.source or "").chars; }
     # Return a portion of $!source without advancing $!pos
@@ -89,37 +113,38 @@ class IO::Str is IO::Mem {
     method Supply(IO::Str :$size = 65536, :$bin --> Supply:D) {
         die "Unsupported :\$bin" if $bin;
         supply {
-            my $str = self.readchars($chars);
+            my $str = self.readchars($size);
             while $str.chars {
                 emit $str;
-                $str = self.readchars($chars);
+                $str = self.readchars($size);
             }
             done;
         }
     }
 
     method write(IO::Str:D: Blob:D $buf --> True) {
-        self.soruce.substr(self.pos) = $buf.decode(:enc(self.enc));
+        self.print($buf.decode(:enc(self.enc)));
     }
 
-
-    multi method print(IO::Str Str:D \x --> True) {
-        self.source.substr(self.pos) = x;
+    multi method print(IO::Str:D: Str:D \x --> True) {
+        my $source := self.source;
+        $source.substr-rw(self.pos) = x;
     }
-    multi method print(IO::Str *@list is raw --> True) {
+    multi method print(IO::Str:D: *@list is raw --> True) {
         self.print(.Str) for @list;
     }
-    multi method put(IO::Str Str:D \x --> True) {
-        self.source.substr(self.pos) = x;
+    multi method put(IO::Str:D: Str:D \x --> True) {
+        self.print(x);
         self.print-nl;
     }
-    multi method put(IO::Str *@list is raw --> True) {
+    multi method put(IO::Str:D: *@list is raw --> True) {
         self.print(.Str) for @list;
         self.print-nl;
     }
 
-    multi method say(IO::Mem:D: |c) {
-        self.print: |c.shift.gist while |c;
+    multi method say(IO::Str:D: |c) {
+        my @tmp = |c;
+        self.print: @tmp.shift.gist while @tmp;
         self.print-nl;
     }
 }

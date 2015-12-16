@@ -62,6 +62,11 @@ class IO::Mem is IO::Handle {
     method sourcefind(IO::Mem:D: Cool $what) { ... }
     # Return a portion of $!source, advancing $!pos
     method takepart(IO::Mem:D: Cool $length) { ... }
+    # Clear $!source
+    method clearsource(IO::Mem:D:) {
+        $!source = "";
+    }
+
     # Return one "line" from $!source
     method get(IO::Mem:D:) { ... }
 
